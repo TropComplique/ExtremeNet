@@ -11,13 +11,11 @@ class Architecture(nn.Module):
         self.backbone = MobileNet()
         self.fpn = FPN(depth=128)
         self.phi_subnet = PhiSubnet(in_channels=128, depth=64, num_copies=4)
-
-        num_filters = 128
         self.end = nn.Sequential(
-            nn.Conv2d(4 * 64, num_filters, 3, bias=False),
-            nn.BatchNorm2d(num_filters),
+            nn.Conv2d(4 * 64, 128, 3, bias=False),
+            nn.BatchNorm2d(128),
             nn.ReLU(inplace=True)
-            nn.Conv2d(num_filters, num_outputs, 1)
+            nn.Conv2d(128, num_outputs, 1)
         )
 
     def forward(self, x):
@@ -28,20 +26,21 @@ class Architecture(nn.Module):
             x: a float tensor with shape [b, 3, h, w],
                 it represents RGB images with pixel values in the range [0, 1].
         Returns:
-            a float tensor with shape [b, num_outputs, h // 4, w // 4].
+            x: a float tensor with shape [b, num_outputs, h/4, w/4].
+            enriched_features: a dict with float tensors.
         """
         features = self.backbone(x)
         enriched_features = self.fpn(features)
 
         upsampled_features = []
         for i in range(4):
-            level = str(i + 1)
+            level = str(i + 2)
             p = enriched_features['p' + level]
             upsampled_features.append(self.phi_subnet(p, i))
 
         x = torch.cat(upsampled_features, dim=1)
         x = self.end(x)
-        return x
+        return x, enriched_features
 
 
 class PhiSubnet(nn.Module):

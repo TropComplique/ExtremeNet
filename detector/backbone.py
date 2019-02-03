@@ -11,6 +11,7 @@ class MobileNet(nn.Module):
             nn.BatchNorm2d(num_filters),
             nn.ReLU6(inplace=True)
         )
+        previous_filters = num_filters
 
         strides_and_filters = [
             (1, 64),
@@ -19,13 +20,13 @@ class MobileNet(nn.Module):
             (2, 512), (1, 512), (1, 512), (1, 512), (1, 512), (1, 512),  # c4
             (2, 1024), (1, 1024)  # c5
         ]
-        blocks = []
-        previous_filters = num_filters
+
+        layers = []
         for stride, num_filters in strides_and_filters:
-            block.append(DepthwisePointwiseBlock(previous_filters, num_filters, stride))
+            layers.append(DepthwisePointwise(previous_filters, num_filters, stride))
             previous_filters = num_filters
 
-        self.blocks = nn.ModuleList(blocks)
+        self.layers = nn.ModuleList(layers)
 
     def forward(self, x):
         """
@@ -55,9 +56,9 @@ class MobileNet(nn.Module):
         return features
 
 
-class DepthwisePointwiseBlock(nn.Module):
+class DepthwisePointwise(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
-        super(DepthwisePointwiseBlock, self).__init__()
+        super(DepthwisePointwise, self).__init__()
         self.layers = nn.Sequential(
             nn.Conv2d(in_channels, in_channels, 3, stride=stride, padding=1, groups=in_channels, bias=False),
             nn.BatchNorm2d(in_channels, eps=1e-3),

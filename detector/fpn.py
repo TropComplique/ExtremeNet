@@ -6,7 +6,9 @@ class FPN(nn.Module):
     def __init__(self, depth):
         super(FPN, self).__init__()
 
+        # for mobilenet outputs
         input_filters = [1024, 512, 256, 128]
+
         self.reduce_dimension = nn.ModuleList([
             nn.Conv2d(num_filters, depth, 1)
             for num_filters in input_filters
