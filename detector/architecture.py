@@ -1,8 +1,12 @@
 import torch
+import torch.nn.init
 import torch.nn as nn
 import torch.nn.functional as F
 from .backbone import MobileNet
 from .fpn import FPN
+
+
+PRETRAINED_MOBILENET = 'pretrained/mobilenet.pth'
 
 
 class Architecture(nn.Module):
@@ -18,6 +22,18 @@ class Architecture(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(128, num_outputs, 1)
         )
+
+        def weights_init(m):
+            if isinstance(m, nn.Conv2d):
+                torch.nn.init.kaiming_uniform_(m.weight)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias)
+            if isinstance(m, nn.BatchNorm2d):
+                torch.nn.init.ones_(m.weight)
+                torch.nn.init.zeros_(m.bias)
+
+        self.apply(weights_init)
+        self.backbone.load_state_dict(PRETRAINED_MOBILENET)
 
     def forward(self, x):
         """
@@ -35,9 +51,9 @@ class Architecture(nn.Module):
 
         upsampled_features = []
         for i in range(4):
-            level = str(i + 2)
-            p = enriched_features['p' + level]
-            upsampled_features.append(self.phi_subnet(p, i + 2))
+            level = i + 2
+            p = enriched_features[f'p{level}']
+            upsampled_features.append(self.phi_subnet(p, level))
 
         x = torch.cat(upsampled_features, dim=1)
         x = self.end(x)
@@ -68,11 +84,13 @@ class PhiSubnet(nn.Module):
             a float tensor with shape [b, depth, upsample * h, upsample * w],
             where upsample = 2**(level - 2).
         """
+
         for i in range(8):
-            if i in [0, 3, 6]:
+            if i in [0, 3, 6]:  # if batch normalization
                 x = self.layers[i](x, torch.tensor([level - 2]))
-            else:
-                x = self.layers[i](x)
+                continue
+            x = self.layers[i](x)
+
         x = F.interpolate(x, scale_factor=2**(level - 2), mode='bilinear', align_corners=True)
         return x
 

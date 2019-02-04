@@ -9,11 +9,13 @@ from .losses import focal_loss, regression_loss
 
 class Trainer:
     def __init__(self, num_steps):
+        """
+        """
         self.network = Architecture(num_outputs=5 + 10)
         self.optimizer = optim.Adam(lr=1e-3, params=self.network.parameters(), weight_decay=1e-4)
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_steps, eta_min=1e-6)
 
-    def train_step(self, images, labels):
+    def get_losses(self, images, labels):
         """
         Arguments:
             images: a float tensor with shape [b, 3, h, w],
@@ -24,13 +26,13 @@ class Trainer:
         """
 
         segmentation_mask, loss_mask = torch.split(labels['masks'], [1, 1], dim=1)
-        # they have shapes [b, h/4, w/4]
+        # they have shapes [b, 1, h/4, w/4]
 
         x, enriched_features = self.network(images)
         heatmaps, offsets = torch.split(x, [5, 10], dim=1)
         # they have shapes [b, 5, h/4, w/4] and [b, 10, h/4, w/4]
 
-        losses = focal_loss(labels, heatmaps, alpha=2.0, beta=3.0)  # shape [b, h/4, w/4]
+        losses = focal_loss(labels, heatmaps, alpha=2.0, beta=4.0)  # shape [b, h/4, w/4]
         heatmap_loss = (loss_mask.squeeze(1) * losses).sum([1, 2]).mean(0)
 
         losses = regression_loss(labels, offsets)  # shape [b, h/4, w/4]
@@ -44,7 +46,7 @@ class Trainer:
             level = str(i + 2)
             p = enriched_features['p' + level][:, 0]
             # it has shape [b, h/s, w/s], where s**level
-            
+
             losses = F.mse_loss(p, segmentation_mask.squeeze(1), reduction='none')
             additional_loss += (loss_mask.squeeze(1) * losses).sum([1, 2]).mean(0)
 
@@ -58,20 +60,35 @@ class Trainer:
                 mode='bilinear', align_corners=True
             )
 
-        total_loss = heatmap_loss + offset_loss + additional_loss
-        self.optimizer.zero_grad()
-        total_loss.backward()
-        self.optimizer.step()
-        self.scheduler.step()
-
         return {
             'heatmap_loss': heatmap_loss,
             'offset_loss': offset_loss,
             'additional_loss': additional_loss
         }
 
-    def save(self):
-        pass
+    def train_step(self, images, labels):
 
-    def evaluate(self):
-        pass
+        losses = self.get_losses(images, labels)
+        total_loss = losses['additional_loss'] + losses['heatmap_loss']
+        total_loss += 100.0 * losses['offset_loss']
+
+        self.optimizer.zero_grad()
+        total_loss.backward()
+        self.optimizer.step()
+        self.scheduler.step()
+
+        losses.update({'total_loss': total_loss})
+        return losses
+
+    def save(self, path):
+        torch.save(self.network.state_dict(), path)
+
+    def evaluate(self, images, labels):
+        """
+        Evaluation is on batches of size 1.
+        """
+
+        with torch.set_grad_enabled(False):
+            losses = self.get_losses(images, labels)
+
+        return losses
