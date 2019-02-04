@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .backbone import MobileNet
@@ -12,9 +13,9 @@ class Architecture(nn.Module):
         self.fpn = FPN(depth=128)
         self.phi_subnet = PhiSubnet(in_channels=128, depth=64, num_copies=4)
         self.end = nn.Sequential(
-            nn.Conv2d(4 * 64, 128, 3, bias=False),
+            nn.Conv2d(4 * 64, 128, 3, padding=1, bias=False),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
             nn.Conv2d(128, num_outputs, 1)
         )
 
@@ -36,7 +37,7 @@ class Architecture(nn.Module):
         for i in range(4):
             level = str(i + 2)
             p = enriched_features['p' + level]
-            upsampled_features.append(self.phi_subnet(p, i))
+            upsampled_features.append(self.phi_subnet(p, i + 2))
 
         x = torch.cat(upsampled_features, dim=1)
         x = self.end(x)
@@ -53,7 +54,7 @@ class PhiSubnet(nn.Module):
             nn.Conv2d(in_channels, depth, 3, padding=1, bias=False),
             ConditionalBatchNorm(depth, num_copies),
             nn.ReLU(inplace=True),
-            nn.Conv2d(depth, depth, 3, padding=1, bias=False)
+            nn.Conv2d(depth, depth, 3, padding=1, bias=False),
             ConditionalBatchNorm(depth, num_copies),
             nn.ReLU(inplace=True),
         ])
@@ -67,7 +68,11 @@ class PhiSubnet(nn.Module):
             a float tensor with shape [b, depth, upsample * h, upsample * w],
             where upsample = 2**(level - 2).
         """
-        x = self.layers(x, torch.tensor([level - 2]))
+        for i in range(8):
+            if i in [0, 3, 6]:
+                x = self.layers[i](x, torch.tensor([level - 2]))
+            else:
+                x = self.layers[i](x)
         x = F.interpolate(x, scale_factor=2**(level - 2), mode='bilinear', align_corners=True)
         return x
 

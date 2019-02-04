@@ -31,10 +31,10 @@ class Trainer:
         # they have shapes [b, 5, h/4, w/4] and [b, 10, h/4, w/4]
 
         losses = focal_loss(labels, heatmaps, alpha=2.0, beta=3.0)  # shape [b, h/4, w/4]
-        heatmap_loss = (loss_mask * losses).sum([1, 2]).mean(0)
+        heatmap_loss = (loss_mask.squeeze(1) * losses).sum([1, 2]).mean(0)
 
         losses = regression_loss(labels, offsets)  # shape [b, h/4, w/4]
-        offset_loss = (loss_mask * loss).sum([1, 2]).mean(0)
+        offset_loss = (loss_mask.squeeze(1) * losses).sum([1, 2]).mean(0)
 
         # this is additional supervision using segmentation masks
         additional_loss = torch.tensor(0.0)
@@ -44,9 +44,9 @@ class Trainer:
             level = str(i + 2)
             p = enriched_features['p' + level][:, 0]
             # it has shape [b, h/s, w/s], where s**level
-
-            losses = F.mse_loss(p, segmentation_mask, reduction='none')
-            additional_loss += (loss_mask * losses).sum([1, 2]).mean(0)
+            
+            losses = F.mse_loss(p, segmentation_mask.squeeze(1), reduction='none')
+            additional_loss += (loss_mask.squeeze(1) * losses).sum([1, 2]).mean(0)
 
             # 2x downsampling
             segmentation_mask = F.interpolate(

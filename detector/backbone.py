@@ -26,7 +26,7 @@ class MobileNet(nn.Module):
             layers.append(DepthwisePointwise(previous_filters, num_filters, stride))
             previous_filters = num_filters
 
-        self.layers = nn.ModuleList(layers)
+        self.layers = nn.Sequential(*layers)
 
     def forward(self, x):
         """
@@ -41,16 +41,16 @@ class MobileNet(nn.Module):
         x = 2.0 * x - 1.0
         x = self.beginning(x)
 
-        x = self.blocks[:3](x)
+        x = self.layers[:3](x)
         features['c2'] = x  # stride 4
 
-        x = self.blocks[3:5](x)
+        x = self.layers[3:5](x)
         features['c3'] = x  # stride 8
 
-        x = self.blocks[5:11](x)
+        x = self.layers[5:11](x)
         features['c4'] = x  # stride 16
 
-        x = self.blocks[11:](x)
+        x = self.layers[11:](x)
         features['c5'] = x  # stride 32
 
         return features

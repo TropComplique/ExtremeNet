@@ -157,7 +157,7 @@ class ExtremePointsDataset(Dataset):
 
         # CONVERT TO PYTORCH TENSORS
 
-        image = torch.FloatTensor(image/255.0)
+        image = torch.FloatTensor(image/255.0).permute(2, 0, 1)
         heatmaps = torch.FloatTensor(np.stack(heatmaps, axis=0))
         offsets = torch.cat(vectormaps, dim=2).permute(2, 0, 1)
         masks = torch.FloatTensor(masks).permute(2, 0, 1)

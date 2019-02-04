@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -18,12 +19,12 @@ def focal_loss(labels, predictions, alpha, beta):
     y = labels['heatmaps']
     y_hat = predictions
 
-    is_extreme_point = torch.equal(y, 1.0)
+    is_extreme_point = y.eq(1.0)
     # binary tensor with shape [b, c, h, w]
 
     losses = F.binary_cross_entropy_with_logits(
         input=y_hat, reduction='none',
-        target=is_extreme_point.long()
+        target=is_extreme_point.float()
     )  # shape [b, c, h, w]
 
     weights = torch.where(
@@ -36,7 +37,7 @@ def focal_loss(labels, predictions, alpha, beta):
     return (weights * losses).sum(1)/normalizer
 
 
-regression_loss(labels, predictions):
+def regression_loss(labels, predictions):
     """
     Arguments:
         labels: a dict with the following keys
@@ -48,18 +49,18 @@ regression_loss(labels, predictions):
         a float tensor with shape [b, h, w].
     """
 
-    is_extreme_point = torch.equal(labels['heatmaps'], 1.0)
+    is_extreme_point = labels['heatmaps'].eq(1.0)
     # binary tensor with shape [b, c, h, w]
 
     # note that is_extreme_point.sum([1, 2, 3])
     # must be equal to labels['num_boxes']
 
-    weights = is_extreme_point.repeat(1, 2, 1, 1)
+    weights = is_extreme_point.repeat(1, 2, 1, 1).float()
     # shape [b, 2 * c, h, w]
 
     losses = F.smooth_l1_loss(predictions, labels['offsets'], reduction='none')
     # shape [b, 2 * c, h, w]
 
-    b = y.size(0)  # batch size
+    b = predictions.size(0)  # batch size
     normalizer = labels['num_boxes'].view(b, 1, 1).float()
     return (weights * losses).sum(1)/normalizer
