@@ -8,7 +8,6 @@ sys.path.append('/home/dan/work/cocoapi/PythonAPI/')
 from pycocotools.coco import COCO
 
 
-NUM_STEPS = 50000
 NUM_EPOCHS = 10
 BATCH_SIZE = 8
 PATH = 'models/run00.pth'
@@ -17,7 +16,7 @@ IMAGES = '/home/dan/datasets/COCO/images/train2017/'
 ANNOTATIONS = '/home/dan/datasets/COCO/annotations/person_keypoints_train2017.json'
 VAL_IMAGES = '/home/dan/datasets/COCO/images/val2017/'
 VAL_ANNOTATIONS = '/home/dan/datasets/COCO/annotations/person_keypoints_val2017.json'
-TRAIN_LOGS = ''
+TRAIN_LOGS = 'models/run00.json'
 
 
 def train_and_evaluate():
@@ -40,7 +39,8 @@ def train_and_evaluate():
         num_workers=1, pin_memory=True
     )
 
-    model = Trainer(10000)
+    num_steps = NUM_EPOCHS * (len(train) // BATCH_SIZE)
+    model = Trainer(num_steps)
     model.network.to(DEVICE)
 
     i = 0
@@ -69,6 +69,7 @@ def train_and_evaluate():
             print(log)
             logs.append(losses)
 
+        eval_losses = []
         model.network.eval()
         for batch in val_loader:
 
@@ -79,11 +80,15 @@ def train_and_evaluate():
                 'masks': masks.to(DEVICE), 'num_boxes': num_boxes.to(DEVICE)
             }
             losses = model.evaluate(images, labels)
-            logs.append(losses)
+            eval_losses.append(losses)
+
+        eval_losses = {k: sum(d[k] for d in eval_losses)/len(eval_losses) for k in losses.keys()}
+        eval_losses.update({'type': 'eval'})
+        logs.append(eval_losses)
 
         model.save(PATH)
-#         with open(TRAIN_LOGS, 'w') as f:
-#             json.dump(logs, f)
+        with open(TRAIN_LOGS, 'w') as f:
+            json.dump(logs, f)
 
 
 train_and_evaluate()
