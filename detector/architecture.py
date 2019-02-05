@@ -2,6 +2,7 @@ import torch
 import torch.nn.init
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 from .backbone import MobileNet
 from .fpn import FPN
 
@@ -29,11 +30,16 @@ class Architecture(nn.Module):
                 if m.bias is not None:
                     torch.nn.init.zeros_(m.bias)
             if isinstance(m, nn.BatchNorm2d):
-                torch.nn.init.ones_(m.weight)
-                torch.nn.init.zeros_(m.bias)
+                if m.affine:
+                    torch.nn.init.ones_(m.weight)
+                    torch.nn.init.zeros_(m.bias)
 
         self.apply(weights_init)
-        self.backbone.load_state_dict(PRETRAINED_MOBILENET)
+        self.backbone.load_state_dict(torch.load(PRETRAINED_MOBILENET))
+
+        p = 0.01  # probability of foreground
+        # sigmoid(-log((1 - p) / p)) = p
+        torch.nn.init.constant_(self.end[3].bias, -math.log((1.0 - p) / p))
 
     def forward(self, x):
         """
@@ -87,7 +93,7 @@ class PhiSubnet(nn.Module):
 
         for i in range(8):
             if i in [0, 3, 6]:  # if batch normalization
-                x = self.layers[i](x, torch.tensor([level - 2]))
+                x = self.layers[i](x, torch.tensor([level - 2], device=x.device))
                 continue
             x = self.layers[i](x)
 

@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import DataLoader
 from detector.input_pipeline import ExtremePointsDataset
 from detector.trainer import Trainer
@@ -14,6 +15,8 @@ PATH = 'models/run00.pth'
 DEVICE = torch.device('cuda:0')
 IMAGES = '/home/dan/datasets/COCO/images/train2017/'
 ANNOTATIONS = '/home/dan/datasets/COCO/annotations/person_keypoints_train2017.json'
+VAL_IMAGES = '/home/dan/datasets/COCO/images/val2017/'
+VAL_ANNOTATIONS = '/home/dan/datasets/COCO/annotations/person_keypoints_val2017.json'
 TRAIN_LOGS = ''
 
 
@@ -24,7 +27,7 @@ def train_and_evaluate():
         is_training=True, training_size=640
     )
     val = ExtremePointsDataset(
-        COCO(ANNOTATIONS), image_folder=IMAGES,
+        COCO(VAL_ANNOTATIONS), image_folder=VAL_IMAGES,
         is_training=False
     )
 
@@ -37,7 +40,7 @@ def train_and_evaluate():
         num_workers=1, pin_memory=True
     )
 
-    model = Trainer(IMAGE_SIZE)
+    model = Trainer(10000)
     model.network.to(DEVICE)
 
     i = 0
@@ -79,8 +82,8 @@ def train_and_evaluate():
             logs.append(losses)
 
         model.save(PATH)
-        with open(TRAIN_LOGS, 'w') as f:
-            json.dump(logs, f)
+#         with open(TRAIN_LOGS, 'w') as f:
+#             json.dump(logs, f)
 
 
-main()
+train_and_evaluate()

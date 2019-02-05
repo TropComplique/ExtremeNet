@@ -33,7 +33,7 @@ def focal_loss(labels, predictions, alpha, beta):
     )  # shape [b, c, h, w]
 
     b = y.size(0)  # batch size
-    normalizer = labels['num_boxes'].view(b, 1, 1).float()
+    normalizer = labels['num_boxes'].view(b, 1, 1).float() + 1.0
     return (weights * losses).sum(1)/normalizer
 
 
@@ -62,5 +62,5 @@ def regression_loss(labels, predictions):
     # shape [b, 2 * c, h, w]
 
     b = predictions.size(0)  # batch size
-    normalizer = labels['num_boxes'].view(b, 1, 1).float()
+    normalizer = labels['num_boxes'].view(b, 1, 1).float() + 1.0
     return (weights * losses).sum(1)/normalizer

@@ -13,7 +13,7 @@ class Trainer:
         """
         self.network = Architecture(num_outputs=5 + 10)
         self.optimizer = optim.Adam(lr=1e-3, params=self.network.parameters(), weight_decay=1e-4)
-        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_steps, eta_min=1e-6)
+        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_steps, eta_min=1e-7)
 
     def get_losses(self, images, labels):
         """
@@ -39,7 +39,7 @@ class Trainer:
         offset_loss = (loss_mask.squeeze(1) * losses).sum([1, 2]).mean(0)
 
         # this is additional supervision using segmentation masks
-        additional_loss = torch.tensor(0.0)
+        additional_loss = torch.tensor(0.0, device=x.device)
 
         for i in range(4):
 
@@ -69,8 +69,8 @@ class Trainer:
     def train_step(self, images, labels):
 
         losses = self.get_losses(images, labels)
-        total_loss = losses['additional_loss'] + losses['heatmap_loss']
-        total_loss += 100.0 * losses['offset_loss']
+        total_loss = 0.1 * losses['additional_loss'] + losses['heatmap_loss']
+        total_loss += 1000.0 * losses['offset_loss']
 
         self.optimizer.zero_grad()
         total_loss.backward()
@@ -88,7 +88,7 @@ class Trainer:
         Evaluation is on batches of size 1.
         """
 
-        with torch.set_grad_enabled(False):
+        with torch.no_grad():
             losses = self.get_losses(images, labels)
 
         return losses
