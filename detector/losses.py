@@ -9,7 +9,8 @@ def focal_loss(labels, predictions, alpha, beta):
         labels: a dict with the following keys
             'heatmaps': a float tensor with shape [b, c, h, w],
             'num_boxes': a long tensor with shape [b].
-        predictions: a float tensor with shape [b, c, h, w].
+        predictions: a float tensor with shape [b, c, h, w],
+            it represents logits.
         alpha, beta: float numbers.
     Returns:
         a float tensor with shape [b, h, w].
@@ -26,6 +27,9 @@ def focal_loss(labels, predictions, alpha, beta):
         input=y_hat, reduction='none',
         target=is_extreme_point.float()
     )  # shape [b, c, h, w]
+
+    # to the [0, 1] range
+    y_hat = torch.sigmoid(y_hat)
 
     weights = torch.where(
         is_extreme_point, torch.pow(1.0 - y_hat, alpha),

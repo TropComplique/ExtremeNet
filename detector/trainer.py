@@ -69,8 +69,8 @@ class Trainer:
     def train_step(self, images, labels):
 
         losses = self.get_losses(images, labels)
-        total_loss = 0.1 * losses['additional_loss'] + losses['heatmap_loss']
-        total_loss += 1000.0 * losses['offset_loss']
+        total_loss = 0.001 * losses['additional_loss'] + losses['heatmap_loss']
+        total_loss += 2.0 * losses['offset_loss']
 
         self.optimizer.zero_grad()
         total_loss.backward()

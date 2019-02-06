@@ -7,9 +7,6 @@ from .backbone import MobileNet
 from .fpn import FPN
 
 
-PRETRAINED_MOBILENET = 'pretrained/mobilenet.pth'
-
-
 class Architecture(nn.Module):
     def __init__(self, num_outputs):
         super(Architecture, self).__init__()
@@ -35,11 +32,9 @@ class Architecture(nn.Module):
                     torch.nn.init.zeros_(m.bias)
 
         self.apply(weights_init)
-        self.backbone.load_state_dict(torch.load(PRETRAINED_MOBILENET))
-
         p = 0.01  # probability of foreground
-        # sigmoid(-log((1 - p) / p)) = p
         torch.nn.init.constant_(self.end[3].bias, -math.log((1.0 - p) / p))
+        # sigmoid(-log((1 - p) / p)) = p
 
     def forward(self, x):
         """

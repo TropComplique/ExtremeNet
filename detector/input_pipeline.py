@@ -67,7 +67,7 @@ class ExtremePointsDataset(Dataset):
         if self.is_training:
             # choose a random window:
             min_dimension = min(height, width)
-            size = np.random.randint(min_dimension // 2, min_dimension)
+            size = np.random.randint(int(min_dimension * 0.7), min_dimension)
             x = np.random.randint(0, width - size)
             y = np.random.randint(0, height - size)
             height, width = size, size  # new size
@@ -226,7 +226,7 @@ def generate_heatmap(points, h, w):
     heatmap = np.zeros([h + 2*k, w + 2*k], dtype='float32')
 
     for x, y in points:
-        sigma = 1.0
+        sigma = 1.5
         g = np.exp(-D/(sigma**2))
         ymin, ymax = y, y + 2*k + 1
         xmin, xmax = x, x + 2*k + 1

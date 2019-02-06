@@ -1,4 +1,5 @@
 import torch
+import json
 from torch.utils.data import DataLoader
 from detector.input_pipeline import ExtremePointsDataset
 from detector.trainer import Trainer
@@ -8,9 +9,10 @@ sys.path.append('/home/dan/work/cocoapi/PythonAPI/')
 from pycocotools.coco import COCO
 
 
-NUM_EPOCHS = 10
-BATCH_SIZE = 8
+NUM_EPOCHS = 16
+BATCH_SIZE = 16
 PATH = 'models/run00.pth'
+PRETRAINED_MOBILENET = 'pretrained/mobilenet.pth'
 DEVICE = torch.device('cuda:0')
 IMAGES = '/home/dan/datasets/COCO/images/train2017/'
 ANNOTATIONS = '/home/dan/datasets/COCO/annotations/person_keypoints_train2017.json'
@@ -41,6 +43,7 @@ def train_and_evaluate():
 
     num_steps = NUM_EPOCHS * (len(train) // BATCH_SIZE)
     model = Trainer(num_steps)
+    model.network.backbone.load_state_dict(torch.load(PRETRAINED_MOBILENET))
     model.network.to(DEVICE)
 
     i = 0
@@ -67,7 +70,7 @@ def train_and_evaluate():
                 losses['offset_loss'], losses['additional_loss']
             )
             print(log)
-            logs.append(losses)
+            logs.append({n: float(v.item()) for n, v in losses.items()})
 
         eval_losses = []
         model.network.eval()
@@ -80,10 +83,11 @@ def train_and_evaluate():
                 'masks': masks.to(DEVICE), 'num_boxes': num_boxes.to(DEVICE)
             }
             losses = model.evaluate(images, labels)
-            eval_losses.append(losses)
+            eval_losses.append({n: float(v.item()) for n, v in losses.items()})
 
         eval_losses = {k: sum(d[k] for d in eval_losses)/len(eval_losses) for k in losses.keys()}
         eval_losses.update({'type': 'eval'})
+        print(eval_losses)
         logs.append(eval_losses)
 
         model.save(PATH)
