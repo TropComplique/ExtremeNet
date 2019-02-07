@@ -12,13 +12,16 @@ class Architecture(nn.Module):
         super(Architecture, self).__init__()
 
         self.backbone = MobileNet()
-        self.fpn = FPN(depth=128)
-        self.phi_subnet = PhiSubnet(in_channels=128, depth=64, num_copies=4)
+        self.fpn = FPN(depth=64)
+        self.phi_subnets = nn.ModuleList([
+            PhiSubnet(in_channels=64, depth=32, level=i+2)
+            for i in range(4)
+        ])
         self.end = nn.Sequential(
-            nn.Conv2d(4 * 64, 128, 3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(4 * 32, 64, 3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, num_outputs, 1)
+            nn.Conv2d(64, num_outputs, 1)
         )
 
         def weights_init(m):
@@ -27,9 +30,8 @@ class Architecture(nn.Module):
                 if m.bias is not None:
                     torch.nn.init.zeros_(m.bias)
             if isinstance(m, nn.BatchNorm2d):
-                if m.affine:
-                    torch.nn.init.ones_(m.weight)
-                    torch.nn.init.zeros_(m.bias)
+                torch.nn.init.ones_(m.weight)
+                torch.nn.init.zeros_(m.bias)
 
         self.apply(weights_init)
         p = 0.01  # probability of foreground
@@ -52,9 +54,8 @@ class Architecture(nn.Module):
 
         upsampled_features = []
         for i in range(4):
-            level = i + 2
-            p = enriched_features[f'p{level}']
-            upsampled_features.append(self.phi_subnet(p, level))
+            p = enriched_features[f'p{i + 2}']
+            upsampled_features.append(self.phi_subnets[i](p))
 
         x = torch.cat(upsampled_features, dim=1)
         x = self.end(x)
@@ -62,61 +63,29 @@ class Architecture(nn.Module):
 
 
 class PhiSubnet(nn.Module):
-    def __init__(self, in_channels, depth, num_copies):
+    def __init__(self, in_channels, depth, level):
         super(PhiSubnet, self).__init__()
 
-        self.layers = nn.ModuleList([
-            ConditionalBatchNorm(in_channels, num_copies),
+        self.layers = nn.Sequential(
+            nn.BatchNorm2d(in_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels, depth, 3, padding=1, bias=False),
-            ConditionalBatchNorm(depth, num_copies),
+            nn.BatchNorm2d(depth),
             nn.ReLU(inplace=True),
             nn.Conv2d(depth, depth, 3, padding=1, bias=False),
-            ConditionalBatchNorm(depth, num_copies),
+            nn.BatchNorm2d(depth),
             nn.ReLU(inplace=True),
-        ])
+        )
+        self.level = level  # possible values are [2, 3, 4, 5]
 
-    def forward(self, x, level):
+    def forward(self, x):
         """
         Arguments:
             x: a float tensor with shape [b, in_channels, h, w].
-            level: an integer. Possible values are [2, 3, 4, 5].
         Returns:
             a float tensor with shape [b, depth, upsample * h, upsample * w],
             where upsample = 2**(level - 2).
         """
-
-        for i in range(8):
-            if i in [0, 3, 6]:  # if batch normalization
-                x = self.layers[i](x, torch.tensor([level - 2], device=x.device))
-                continue
-            x = self.layers[i](x)
-
-        x = F.interpolate(x, scale_factor=2**(level - 2), mode='bilinear', align_corners=True)
+        x = self.layers(x)
+        x = F.interpolate(x, scale_factor=2**(self.level - 2), mode='bilinear', align_corners=True)
         return x
-
-
-class ConditionalBatchNorm(nn.Module):
-
-    def __init__(self, d, n):
-        super(ConditionalBatchNorm, self).__init__()
-
-        self.bn = nn.BatchNorm2d(d, affine=False)
-        self.embedding = nn.Embedding(n, 2 * d)
-        self.embedding.weight.data[:, :d] = 1.0
-        self.embedding.weight.data[:, d:] = 0.0
-
-    def forward(self, x, i):
-        """
-        Arguments:
-            x: a float tensor with shape [b, d, h, w].
-            i: a long tensor with shape [1].
-        Returns:
-            a float tensor with shape [b, d, h, w].
-        """
-        x_normalized = self.bn(x)  # shape [b, d, h, w]
-        params = self.embedding(i)  # shape [1, 2 * d]
-        gamma, beta = torch.split(params, x.size(1), dim=1)
-        gamma = gamma.unsqueeze(2).unsqueeze(2)  # shape [1, d, 1, 1]
-        beta = beta.unsqueeze(2).unsqueeze(2)  # shape [1, d, 1, 1]
-        return gamma * x_normalized + beta

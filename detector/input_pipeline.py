@@ -67,7 +67,7 @@ class ExtremePointsDataset(Dataset):
         if self.is_training:
             # choose a random window:
             min_dimension = min(height, width)
-            size = np.random.randint(int(min_dimension * 0.7), min_dimension)
+            size = np.random.randint(int(min_dimension * 0.5), min_dimension)
             x = np.random.randint(0, width - size)
             y = np.random.randint(0, height - size)
             height, width = size, size  # new size

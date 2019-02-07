@@ -12,7 +12,7 @@ class Trainer:
         """
         """
         self.network = Architecture(num_outputs=5 + 10)
-        self.optimizer = optim.Adam(lr=1e-3, params=self.network.parameters(), weight_decay=1e-4)
+        self.optimizer = optim.Adam(lr=1e-3, params=self.network.parameters(), weight_decay=1e-5)
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_steps, eta_min=1e-7)
 
     def get_losses(self, images, labels):

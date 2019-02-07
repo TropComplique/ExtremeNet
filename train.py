@@ -9,7 +9,7 @@ sys.path.append('/home/dan/work/cocoapi/PythonAPI/')
 from pycocotools.coco import COCO
 
 
-NUM_EPOCHS = 16
+NUM_EPOCHS = 24
 BATCH_SIZE = 16
 PATH = 'models/run00.pth'
 PRETRAINED_MOBILENET = 'pretrained/mobilenet.pth'
