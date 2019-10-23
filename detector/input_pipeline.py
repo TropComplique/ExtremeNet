@@ -1,9 +1,16 @@
 import cv2
 import os
-import numpy as np
 import math
 import torch
+import numpy as np
+from PIL import Image
+from torchvision import transforms
 from torch.utils.data import Dataset
+
+
+RANDOM_CROP = 0.5
+MIN_AREA = 256
+SIGMA = 0.02
 
 
 class ExtremePointsDataset(Dataset):
@@ -29,6 +36,12 @@ class ExtremePointsDataset(Dataset):
         if is_training:
             assert training_size % 32 == 0
             self.training_size = training_size
+
+        color_transforms = transforms.RandomChoice([
+            transforms.ColorJitter(brightness=0, contrast=0, saturation=2.0, hue=0.5),
+            transforms.RandomGrayscale(p=0.05)
+        ])
+        self.color_transforms = color_transforms
 
     def __len__(self):
         return len(self.ids)
@@ -65,9 +78,11 @@ class ExtremePointsDataset(Dataset):
         # OPTIONALLY DO A RANDOM CROP
 
         if self.is_training:
-            # choose a random window:
+
+            # choose a random window
             min_dimension = min(height, width)
-            size = np.random.randint(int(min_dimension * 0.5), min_dimension)
+            min_size = int(min_dimension * RANDOM_CROP)
+            size = np.random.randint(min_size, min_dimension)
             x = np.random.randint(0, width - size)
             y = np.random.randint(0, height - size)
             height, width = size, size  # new size
@@ -75,8 +90,8 @@ class ExtremePointsDataset(Dataset):
             ymin, xmin, ymax, xmax = y, x, y + size, x + size
             image = image[ymin:ymax, xmin:xmax]
         else:
-            # whole image window:
             ymin, xmin, ymax, xmax = 0, 0, height, width
+            # it is whole image window
 
         # DETECT EXTREME POINTS AND COLLECT ANNOTATIONS INTO ARRAYS
 
@@ -90,7 +105,7 @@ class ExtremePointsDataset(Dataset):
             mask = mask[ymin:ymax, xmin:xmax]
 
             unannotated = a['iscrowd'] == 1
-            too_small = mask.sum() < 100  # whether area is too small
+            too_small = mask.sum() < MIN_AREA  # whether area is too small
 
             if too_small or unannotated:
                 not_ignore_mask = np.logical_and(mask == 0, not_ignore_mask)
@@ -114,8 +129,13 @@ class ExtremePointsDataset(Dataset):
         # RESIZE THE IMAGE AND ANNOTATIONS (AND OPTIONALLY AUGMENT DATA)
 
         if self.is_training:
+
             image_and_masks, extreme_points = random_flip(image_and_masks, extreme_points)
+            image_and_masks, extreme_points = random_pad(image_and_masks, extreme_points)
+
+            height, width, _ = image_and_masks.shape  # it could change
             w, h = self.training_size, self.training_size
+
             image_and_masks = cv2.resize(image_and_masks, (w, h), cv2.INTER_NEAREST)
             scaler = np.array([w/width, h/height])
             extreme_points = (extreme_points * scaler).astype('int32')
@@ -142,13 +162,19 @@ class ExtremePointsDataset(Dataset):
         offsets = (extreme_points / 4.0) - (extreme_points // 4)  # shape [num_boxes, 5, 2]
         extreme_points = extreme_points // 4  # floor
 
+        heights = extreme_points[:, 1, 1] - extreme_points[:, 0, 1]
+        widths = extreme_points[:, 3, 0] - extreme_points[:, 2, 0]
+        sigmas = SIGMA * np.maximum(heights, widths)
+        sigmas = np.clip(sigmas, 1.0, None)
+        # they have shape [num_boxes]
+
         heatmaps, vectormaps = [], []
         for i in range(5):
 
             # get a particular point type
             points = extreme_points[:, i]
 
-            heatmaps.append(generate_heatmap(points, h, w))
+            heatmaps.append(generate_heatmap(points, h, w, sigmas))
             # don't forget to convert to (y, x) format:
             values = torch.FloatTensor(offsets[:, i, [1, 0]])
             index = torch.LongTensor(points[:, [1, 0]])
@@ -157,17 +183,29 @@ class ExtremePointsDataset(Dataset):
 
         # CONVERT TO PYTORCH TENSORS
 
-        image = torch.FloatTensor(image/255.0).permute(2, 0, 1)
+        if self.is_training:
+            image = Image.fromarray(image)
+            image = self.color_transforms(image)
+            image = np.array(image)
+
+        image = torch.FloatTensor(image).permute(2, 0, 1).div(255.0)
         heatmaps = torch.FloatTensor(np.stack(heatmaps, axis=0))
         offsets = torch.cat(vectormaps, dim=2).permute(2, 0, 1)
         masks = torch.FloatTensor(masks).permute(2, 0, 1)
         num_boxes = torch.tensor(num_boxes)
 
-        return image, heatmaps, offsets, masks, num_boxes
+        labels = {
+            'heatmaps': heatmaps, 'offsets': offsets,
+            'masks': masks, 'num_boxes': num_boxes
+        }
+        return image, labels
 
 
 def get_extreme_points(mask):
     """
+    Also see the original implementation:
+    https://github.com/xingyizhou/ExtremeNet/blob/master/tools/gen_coco_extreme_points.py
+
     Arguments:
         mask: a numpy uint8 array with shape [h, w].
     Returns:
@@ -208,13 +246,14 @@ def get_extreme_points(mask):
     return np.array([[tx, ty], [bx, by], [lx, ly], [rx, ry]], dtype='int32')
 
 
-def generate_heatmap(points, h, w):
+def generate_heatmap(points, h, w, sigmas):
     """
     Arguments:
         points: a numpy int array with shape [num_points, 2].
             It is in the form [x, y].
             And it is assumed that `0 <= x < w` and `0 <= y < h`.
         h, w: integers.
+        sigmas: a numpy float array with shape [num_points].
     Returns:
         a numpy float array with shape [h, w].
     """
@@ -225,8 +264,7 @@ def generate_heatmap(points, h, w):
     D = 0.5 * (X**2 + Y**2)
     heatmap = np.zeros([h + 2*k, w + 2*k], dtype='float32')
 
-    for x, y in points:
-        sigma = 1.5
+    for (x, y), sigma in zip(points, sigmas):
         g = np.exp(-D/(sigma**2))
         ymin, ymax = y, y + 2*k + 1
         xmin, xmax = x, x + 2*k + 1
@@ -247,5 +285,37 @@ def random_flip(image_and_masks, extreme_points):
         # switch left and right
         correct_order = [0, 1, 3, 2]
         extreme_points = extreme_points[:, correct_order]
+
+    return image_and_masks, extreme_points
+
+
+def random_pad(image_and_masks, extreme_points):
+
+    height, width, _ = image_and_masks.shape
+    ymin = extreme_points[:, 0, 1]
+    ymax = extreme_points[:, 1, 1]
+    sizes = ymax - ymin  # shape [num_boxes]
+
+    if len(sizes) == 0 or 0.25 * height > sizes.mean():
+        # if mean person height is
+        # smaller than quarter image height,
+        # in other words if image
+        # contains only small people
+        return image_and_masks, extreme_points
+
+    # scale the image by this number
+    scaler = np.random.uniform(1.75, 2.75)
+
+    # calculate new image size
+    h = int(scaler * height)
+    w = int(scaler * width)
+    empty = np.zeros((h, w, 5), dtype='uint8')
+
+    y = np.random.randint(0, h - height)
+    x = np.random.randint(0, w - width)
+    empty[y:(y + height), x:(x + width)] = image_and_masks
+
+    image_and_masks = empty
+    extreme_points += np.array([x, y])
 
     return image_and_masks, extreme_points

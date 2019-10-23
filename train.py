@@ -1,24 +1,23 @@
 import torch
-import json
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from detector.input_pipeline import ExtremePointsDataset
 from detector.trainer import Trainer
-
-import sys
-sys.path.append('/home/dan/work/cocoapi/PythonAPI/')
 from pycocotools.coco import COCO
 
 
 NUM_EPOCHS = 24
 BATCH_SIZE = 16
-PATH = 'models/run00.pth'
-PRETRAINED_MOBILENET = 'pretrained/mobilenet.pth'
 DEVICE = torch.device('cuda:0')
+
+SAVE_PATH = 'models/run00.pth'
+LOGS_DIR = 'summaries/run00/'
+PRETRAINED_BACKBONE = 'pretrained/mobilenet.pth'
+
 IMAGES = '/home/dan/datasets/COCO/images/train2017/'
 ANNOTATIONS = '/home/dan/datasets/COCO/annotations/person_keypoints_train2017.json'
 VAL_IMAGES = '/home/dan/datasets/COCO/images/val2017/'
 VAL_ANNOTATIONS = '/home/dan/datasets/COCO/annotations/person_keypoints_val2017.json'
-TRAIN_LOGS = 'models/run00.json'
 
 
 def train_and_evaluate():
@@ -27,72 +26,56 @@ def train_and_evaluate():
         COCO(ANNOTATIONS), image_folder=IMAGES,
         is_training=True, training_size=640
     )
+    train_loader = DataLoader(
+        dataset=train, batch_size=BATCH_SIZE,
+        num_workers=4, pin_memory=True,
+        shuffle=True, drop_last=True
+    )
     val = ExtremePointsDataset(
-        COCO(VAL_ANNOTATIONS), image_folder=VAL_IMAGES,
+        COCO(VAL_ANNOTATIONS),
+        image_folder=VAL_IMAGES,
         is_training=False
     )
-
-    train_loader = DataLoader(
-        dataset=train, batch_size=BATCH_SIZE, shuffle=True,
-        num_workers=1, pin_memory=True
-    )
-    val_loader = DataLoader(
-        dataset=val, batch_size=1, shuffle=False,
-        num_workers=1, pin_memory=True
-    )
+    val_loader = DataLoader(dataset=val, batch_size=1)
 
     num_steps = NUM_EPOCHS * (len(train) // BATCH_SIZE)
     model = Trainer(num_steps)
-    model.network.backbone.load_state_dict(torch.load(PRETRAINED_MOBILENET))
+    state = torch.load(PRETRAINED_BACKBONE)
+    model.network.backbone.load_state_dict(state)
     model.network.to(DEVICE)
 
-    i = 0
-    logs = []
-    text = 'e: {0}, i: {1}, total: {2:.3f}, heatmap: {3:.3f}, ' +\
-           'offset: {4:.3f}, additional: {5:.3f}'
+    i = 0  # number of weight updates
+    writer = SummaryWriter(LOGS_DIR)
 
     for e in range(NUM_EPOCHS):
 
         model.network.train()
-        for batch in train_loader:
+        for images, labels in train_loader:
 
-            images, heatmaps, offsets, masks, num_boxes = batch
             images = images.to(DEVICE)
-            labels = {
-                'heatmaps': heatmaps.to(DEVICE), 'offsets': offsets.to(DEVICE),
-                'masks': masks.to(DEVICE), 'num_boxes': num_boxes.to(DEVICE)
-            }
+            labels = {k: v.to(DEVICE) for k, v in labels.items()}
             losses = model.train_step(images, labels)
 
+            for k, v in losses.items():
+                writer.add_scalar(k, v.item(), i)
+
             i += 1
-            log = text.format(
-                e, i, losses['total_loss'], losses['heatmap_loss'],
-                losses['offset_loss'], losses['additional_loss']
-            )
-            print(log)
-            logs.append({n: float(v.item()) for n, v in losses.items()})
 
         eval_losses = []
         model.network.eval()
-        for batch in val_loader:
+        for images, labels in val_loader:
 
-            images, heatmaps, offsets, masks, num_boxes = batch
             images = images.to(DEVICE)
-            labels = {
-                'heatmaps': heatmaps.to(DEVICE), 'offsets': offsets.to(DEVICE),
-                'masks': masks.to(DEVICE), 'num_boxes': num_boxes.to(DEVICE)
-            }
+            labels = {k: v.to(DEVICE) for k, v in labels.items()}
             losses = model.evaluate(images, labels)
-            eval_losses.append({n: float(v.item()) for n, v in losses.items()})
+            eval_losses.append({n: v.item() for n, v in losses.items()})
 
-        eval_losses = {k: sum(d[k] for d in eval_losses)/len(eval_losses) for k in losses.keys()}
-        eval_losses.update({'type': 'eval'})
-        print(eval_losses)
-        logs.append(eval_losses)
+        eval_losses = {k: sum(d[k] for d in eval_losses)/len(eval_losses) for k in losses}
+        for k, v in eval_losses.items():
+            writer.add_scalar('eval_' + k, v, i)
 
-        model.save(PATH)
-        with open(TRAIN_LOGS, 'w') as f:
-            json.dump(logs, f)
+        # save every epoch
+        model.save(SAVE_PATH)
 
 
 train_and_evaluate()

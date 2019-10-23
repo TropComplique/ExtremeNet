@@ -3,6 +3,10 @@ import torch.nn.functional as F
 
 
 class FPN(nn.Module):
+    """
+    This is an implementation
+    of feature pyramid network.
+    """
     def __init__(self, depth):
         super(FPN, self).__init__()
 
@@ -27,6 +31,7 @@ class FPN(nn.Module):
                 a dict with float tensors.
                 It has keys ['p2', 'p3', 'p4', 'p5'].
         """
+
         x = self.reduce_dimension[0](features['c5'])
         p5 = self.smoothen[0](x)
         enriched_features = {'p5': p5}

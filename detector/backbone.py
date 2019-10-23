@@ -2,6 +2,10 @@ import torch.nn as nn
 
 
 class MobileNet(nn.Module):
+    """
+    This is an implementation of the
+    classical MobileNet v1 architecture.
+    """
     def __init__(self):
         super(MobileNet, self).__init__()
 
@@ -15,10 +19,10 @@ class MobileNet(nn.Module):
 
         strides_and_filters = [
             (1, 64),
-            (2, 128), (1, 128),  # c2
-            (2, 256), (1, 256),  # c3
-            (2, 512), (1, 512), (1, 512), (1, 512), (1, 512), (1, 512),  # c4
-            (2, 1024), (1, 1024)  # c5
+            (2, 128), (1, 128),
+            (2, 256), (1, 256),
+            (2, 512), (1, 512), (1, 512), (1, 512), (1, 512), (1, 512),
+            (2, 1024), (1, 1024)
         ]
 
         layers = []
@@ -32,7 +36,8 @@ class MobileNet(nn.Module):
         """
         Arguments:
             x: a float tensor with shape [b, 3, h, w],
-                it represents RGB images with pixel values in the range [0, 1].
+                it represents RGB images with
+                pixel values in the range [0, 1].
         Returns:
             a dict with float tensors.
         """
@@ -57,8 +62,10 @@ class MobileNet(nn.Module):
 
 
 class DepthwisePointwise(nn.Module):
+
     def __init__(self, in_channels, out_channels, stride=1):
         super(DepthwisePointwise, self).__init__()
+
         self.layers = nn.Sequential(
             nn.Conv2d(in_channels, in_channels, 3, stride=stride, padding=1, groups=in_channels, bias=False),
             nn.BatchNorm2d(in_channels, eps=1e-3),
@@ -73,8 +80,7 @@ class DepthwisePointwise(nn.Module):
         Arguments:
             x: a float tensor with shape [b, in_channels, h, w].
         Returns:
-            a float tensor with shape [b, out_channels, h // stride, w // stride],
-            where h and w are divisible by the stride.
+            a float tensor with shape [b, out_channels, h // s, w // s],
+            where `h` and `w` are divisible by the `s` (it is stride).
         """
-        x = self.layers(x)
-        return x
+        return self.layers(x)
