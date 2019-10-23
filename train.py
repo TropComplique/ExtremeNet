@@ -7,7 +7,7 @@ from pycocotools.coco import COCO
 
 
 NUM_EPOCHS = 24
-BATCH_SIZE = 16
+BATCH_SIZE = 20
 DEVICE = torch.device('cuda:0')
 
 SAVE_PATH = 'models/run00.pth'
@@ -47,7 +47,7 @@ def train_and_evaluate():
     i = 0  # number of weight updates
     writer = SummaryWriter(LOGS_DIR)
 
-    for e in range(NUM_EPOCHS):
+    for e in range(1, NUM_EPOCHS + 1):
 
         model.network.train()
         for images, labels in train_loader:
@@ -59,6 +59,7 @@ def train_and_evaluate():
             for k, v in losses.items():
                 writer.add_scalar(k, v.item(), i)
 
+            print(f'epoch {e}, iteration {i}')
             i += 1
 
         eval_losses = []

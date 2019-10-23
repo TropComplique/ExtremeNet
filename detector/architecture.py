@@ -106,6 +106,8 @@ class PhiSubnet(nn.Module):
         x = self.layers(x)
         # it has shape [b, depth, h, w]
 
-        upsample = 2 ** (self.level - 2)
-        x = F.interpolate(x, scale_factor=upsample, mode='bilinear')
+        x = F.interpolate(
+            x, scale_factor=2 ** (self.level - 2),
+            mode='bilinear',align_corners=False
+        )
         return x

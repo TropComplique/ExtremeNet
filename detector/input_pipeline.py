@@ -38,8 +38,8 @@ class ExtremePointsDataset(Dataset):
             self.training_size = training_size
 
         color_transforms = transforms.RandomChoice([
-            transforms.ColorJitter(brightness=0, contrast=0, saturation=2.0, hue=0.5),
-            transforms.RandomGrayscale(p=0.05)
+            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1),
+            transforms.RandomGrayscale(p=0.01)
         ])
         self.color_transforms = color_transforms
 

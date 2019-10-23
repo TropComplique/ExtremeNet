@@ -54,8 +54,8 @@ class Trainer:
             additional_loss += (loss_mask.squeeze(1) * losses).sum([1, 2]).mean(0)
 
             # 2x downsampling
-            segmentation_mask = F.interpolate(segmentation_mask, scale_factor=0.5, mode='bilinear')
-            loss_mask = F.interpolate(loss_mask, scale_factor=0.5, mode='bilinear')
+            segmentation_mask = F.interpolate(segmentation_mask, scale_factor=0.5, mode='bilinear', align_corners=False)
+            loss_mask = F.interpolate(loss_mask, scale_factor=0.5, mode='bilinear', align_corners=False)
 
         return {
             'heatmap_loss': heatmap_loss,
