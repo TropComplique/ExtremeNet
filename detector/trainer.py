@@ -14,8 +14,8 @@ class Trainer:
             num_steps: an integer.
         """
         self.network = Architecture(num_outputs=5 + 10)
-        self.optimizer = optim.Adam(self.network.parameters(), lr=3e-4, weight_decay=1e-6)
-        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_steps, eta_min=1e-7)
+        self.optimizer = optim.AdamW(self.network.parameters(), lr=1e-3, weight_decay=1e-5)
+        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_steps, eta_min=1e-6)
 
     def get_losses(self, images, labels):
         """
@@ -66,7 +66,7 @@ class Trainer:
     def train_step(self, images, labels):
 
         losses = self.get_losses(images, labels)
-        total_loss = 1e-4 * losses['additional_loss'] + losses['heatmap_loss']
+        total_loss = 1e-5 * losses['additional_loss'] + losses['heatmap_loss']
         total_loss += 2.0 * losses['offset_loss']
 
         self.optimizer.zero_grad()
